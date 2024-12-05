@@ -2,3 +2,5 @@
 
 - [Exercises](exercises/)
 - [Practical Work 1 (CSRF, XSS, SQL Injection)](pw1/)
+- [Practical Work 2 (Authentication)](pw2/)
+
