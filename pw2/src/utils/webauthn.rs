@@ -9,6 +9,7 @@ use once_cell::sync::Lazy;
 use url::Url;
 use tokio::sync::RwLock;
 
+// TODO ask if tests in rust code
 
 // Initialisation globale de WebAuthn
 static WEBAUTHN: Lazy<Webauthn> = Lazy::new(|| {
@@ -35,26 +36,39 @@ pub async fn begin_registration(
     user_email: &str,
     user_display_name: &str,
 ) -> Result<(serde_json::Value, PasskeyRegistration)> {
-    let user_id = todo!();
+    let user_id = Uuid::new_v4();
 
+    // Exclude the known passkey for this user
+    let store = CREDENTIAL_STORE.read().await;
+    let exclude_credentials = store
+        .get(user_email)
+        .map(|pk| vec![pk.cred_id().clone()]);
 
-    // TODO
+    // Start registration
+    let (ccr, state) = WEBAUTHN
+        .start_passkey_registration(
+            user_id,
+            user_email,
+            user_display_name,
+            exclude_credentials, // No credential options
+        )
+        .context("Failed to start registration")?;
 
     Ok((
         serde_json::json!({
-            "rp": todo!(),
+            "rp": ccr.public_key.rp,
             "user": {
-                "id": todo!(),
-                "name": todo!(),
-                "displayName": todo!(),
+                "id": ccr.public_key.user.id,
+                "name": ccr.public_key.user.name,
+                "displayName": ccr.public_key.user.display_name,
             },
-            "challenge": todo!(),
-            "pubKeyCredParams": todo!(),
-            "timeout": todo!(),
-            "authenticatorSelection": todo!(),
-            "attestation": todo!(),
+            "challenge": ccr.public_key.challenge,
+            "pubKeyCredParams": ccr.public_key.pub_key_cred_params,
+            "timeout": ccr.public_key.timeout,
+            "authenticatorSelection": ccr.public_key.authenticator_selection,
+            "attestation": ccr.public_key.attestation,
         }),
-        todo!(),
+        state,
     ))
 }
 
@@ -64,25 +78,45 @@ pub async fn complete_registration(
     response: &RegisterPublicKeyCredential,
     stored_state: &StoredRegistrationState,
 ) -> Result<()> {
+    // TODO: we shouldn't need to validate the challenge ourselves, the library already does that, ask about this
+    //       ref stored_state.challenge
 
-    // TODO
+    // Complete the registration
+    let passkey = WEBAUTHN
+        .finish_passkey_registration(
+            response,
+            &stored_state.registration_state,
+        )
+        .context("Failed to complete registration")?;
+
+    // Store the credential
+    let mut store = CREDENTIAL_STORE.write().await;
+    store.insert(user_email.to_string(), passkey);
 
     Ok(())
 }
 
 /// Démarrer l'authentification WebAuthn
 pub async fn begin_authentication(user_email: &str) -> Result<(serde_json::Value, PasskeyAuthentication)> {
+    let store = CREDENTIAL_STORE.read().await;
+    let allowed_credentials = store
+        .get(user_email)
+        .map(|pk| vec![pk.clone()])
+        .unwrap_or_default();
 
-    // TODO
+    // Start authentication
+    let (rcr, state) = WEBAUTHN
+        .start_passkey_authentication(&allowed_credentials)
+        .context("Failed to start authentication")?;
 
     Ok((
         serde_json::json!({
-            "challenge": todo!(),
-            "timeout": todo!(),
-            "rpId": todo!(),
-            "allowCredentials": todo!(),
+            "challenge": rcr.public_key.challenge,
+            "timeout": rcr.public_key.timeout,
+            "rpId": rcr.public_key.rp_id,
+            "allowCredentials": rcr.public_key.allow_credentials,
          }),
-        todo!(),
+        state,
     ))
 }
 
@@ -92,14 +126,11 @@ pub async fn complete_authentication(
     state: &PasskeyAuthentication,
     server_challenge: &str,
 ) -> Result<()> {
-    let client_data_bytes = response.response.client_data_json.as_ref();
-    let client_data_json = String::from_utf8(client_data_bytes.to_vec())
-        .context("Failed to decode client_data_json")?;
-
-    let client_data: serde_json::Value = serde_json::from_str(&client_data_json)
-        .context("Failed to parse client_data_json")?;
-
-    // TODO
+    // TODO ask about the client_data_json and server_challenge given the challenge verification is already done in the library
+    // Complete the authentication
+    WEBAUTHN
+        .finish_passkey_authentication(response, state)
+        .context("Failed to complete authentication")?;
 
     Ok(())
 }
