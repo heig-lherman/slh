@@ -9,7 +9,7 @@ use tower_sessions::Session;
 pub struct SessionUser;
 
 #[async_trait::async_trait]
-impl <S> FromRequestParts<S> for SessionUser
+impl<S> FromRequestParts<S> for SessionUser
 where
     S: Send + Sync,
 {
@@ -17,7 +17,8 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         if let Some(session) = parts.extensions.get::<Session>() {
-            if session.get::<String>("email").is_ok() {
+            // TODO: massive security issue: this doesn't actually check if the user is logged in...
+            if session.get::<bool>("authenticated").unwrap_or_default().is_some() {
                 return Ok(SessionUser);
             }
         }

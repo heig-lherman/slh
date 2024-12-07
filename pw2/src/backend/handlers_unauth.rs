@@ -11,8 +11,9 @@ use axum::{
 use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
-use log::{debug};
+use log::{debug, error};
 use tokio::sync::RwLock;
+use tower_sessions::Session;
 use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, RegisterPublicKeyCredential};
 use crate::HBS;
 use crate::database::{user, token};
@@ -123,6 +124,21 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
     if !reset_mode {
         user::create(email, first_name, last_name)
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to complete registration"))?;
+
+        if let Ok(verification_token) = token::generate(email) {
+            // Send verification email
+            if let Err(_) = send_mail(
+                email,
+                "Verify your account",
+                &format!(
+                    "Welcome! Please verify your account by clicking this link: http://localhost:8080/validate/{}",
+                    verification_token
+                ),
+            ) {
+                // Log error but don't fail the registration
+                error!("Failed to send verification email to {}", email);
+            }
+        }
     }
 
     user::set_passkey(email, passkey)
@@ -140,6 +156,13 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
 
     // Ensure the user's passkey is loaded if present in the database
     ensure_store_known_user_passkey(email).await;
+
+    // Check user exists and is verified before starting authentication
+    match user::get(email) {
+        Some(user_data) if !user_data.verified => Err((StatusCode::BAD_REQUEST, "Invalid authentication request"))?,
+        None => Err((StatusCode::BAD_REQUEST, "Invalid authentication request"))?,
+        Some(_) => {} // User exists and is verified, continue with authentication
+    }
 
     let state_id = uuid::Uuid::new_v4();
     let (pk, state) = begin_authentication(email)
@@ -162,7 +185,10 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
 }
 
 /// Fin du processus d'authentification WebAuthn
-pub async fn login_complete(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Redirect> {
+pub async fn login_complete(
+    session: Session,
+    Json(payload): Json<serde_json::Value>,
+) -> axum::response::Result<Redirect> {
     let response = payload.get("response").ok_or_else(|| (StatusCode::BAD_REQUEST, "Response is required"))?;
     let state_id = payload.get("state_id").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
@@ -178,15 +204,19 @@ pub async fn login_complete(Json(payload): Json<serde_json::Value>) -> axum::res
     // Complete the authentication
     complete_authentication(&cred, &stored_state.state, &stored_state.server_challenge)
         .await
-        .map_err(|_| (StatusCode::FORBIDDEN, "Failed to complete authentication"))?;
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Failed to complete authentication"))?;
 
-    // TODO: ask should we check whether the user is verified?
+    // Update the session to indicate the user is authenticated
+    session
+        .insert("authenticated", true)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to set session"))?;
 
     Ok(Redirect::to("/home"))
 }
 
 /// Gère la déconnexion de l'utilisateur
-pub async fn logout() -> impl IntoResponse {
+pub async fn logout(session: Session) -> impl IntoResponse {
+    session.delete(); // TODO: ask why hasn't been done
     Redirect::to("/")
 }
 
@@ -208,28 +238,32 @@ pub async fn recover_account(Json(payload): Json<serde_json::Value>) -> axum::re
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    if let Some(user) = user::get(email) {
-        // TODO ask should user be verified here?
-        // Generate recovery token
-        let recovery_token = token::generate(email)
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."))?;
+    match user::get(email) {
+        // The user needs to have verified their email
+        Some(user) if user.verified => {
+            // Generate recovery token
+            let recovery_token = token::generate(email)
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."))?;
 
-        // Send recovery email
-        let recovery_link = format!("http://localhost:8080/recover/{}", recovery_token);
-        if let Err(_) = send_mail(
-            &user.email,
-            "Account Recovery",
-            &format!(
-                "Click the following link to recover your account: {}\n\n\
-                 If you did not request this recovery, you can safely ignore this email.",
-                recovery_link
-            ),
-        ) {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to send recovery email").into());
+            // Send recovery email
+            let recovery_link = format!("http://localhost:8080/recover/{}", recovery_token);
+            if let Err(_) = send_mail(
+                email,
+                "Account Recovery",
+                &format!(
+                    "Click the following link to recover your account: {}\n\n\
+                     If you did not request this recovery, you can safely ignore this email.",
+                    recovery_link
+                ),
+            ) {
+                error!("Failed to send recovery email to {}", email);
+            }
         }
+        _ => (),
     }
 
-    // For security, we always return success even if the email doesn't exist
+    // For security, we always return success even if the email doesn't exist so that the database
+    // cannot be enumerated by checking if an email is valid or not.
     HBS.render("recover", &json!({"success": true}))
         .map(Html)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.").into())
