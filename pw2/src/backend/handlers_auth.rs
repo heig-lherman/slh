@@ -20,6 +20,7 @@ use std::{
 };
 use uuid::Uuid;
 use crate::consts;
+use crate::utils::input::{sanitize_filename, sanitize_html, validate_image};
 
 /// Modèle représentant un post avec des likes
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -62,10 +63,9 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
 
         if field_name == "text" {
             let text = field.text().await.unwrap_or_default();
-
-            text_content = Some(text);
+            text_content = sanitize_html(&text);
         } else if field_name == "file" {
-            let filename = field.file_name().unwrap_or_default().to_string();
+            let filename = sanitize_filename(field.file_name().unwrap_or_default());
             let file_bytes = field.bytes().await?;
 
             let uploads_dir = consts::UPLOADS_DIR;
@@ -73,9 +73,12 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
                 create_dir_all(uploads_dir).unwrap();
             }
 
+            if !validate_image(&file_bytes, &filename).is_ok() {
+                return Err((StatusCode::BAD_REQUEST, "Invalid image file").into());
+            }
+
             let file_path = format!("{}/{}", uploads_dir, filename);
             let mut file = File::create(&file_path).unwrap();
-
 
             file.write_all(&file_bytes).unwrap();
 

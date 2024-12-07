@@ -24,4 +24,5 @@ uuid = { version = "1.6.1", features = ["v4"] }
 dotenv = "0.15.0"
 url = "2.5.3"
 serde_yaml = "0.9.34-deprecated"
-
+image = "0.25.5"
+sanitize_html = "0.8.1"
