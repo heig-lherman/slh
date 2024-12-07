@@ -83,7 +83,7 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
             file.write_all(&file_bytes).unwrap();
 
             // Chemin relatif utilisé par le frontend
-            uploaded_file_path = Some(format!("{}/{}", consts::UPLOADS_DIR, filename));
+            uploaded_file_path = Some(format!("/uploads/{}", filename));
         }
     }
 

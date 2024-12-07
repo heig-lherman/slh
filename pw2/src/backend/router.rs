@@ -7,12 +7,14 @@ use http::StatusCode;
 use tower_sessions::{SessionManagerLayer, MemoryStore};
 use tower_http::cors::{Any, CorsLayer};
 use tower::{ServiceBuilder};
+use tower_http::services::ServeDir;
 use crate::backend::handlers_unauth::{
     register_begin, register_complete, login_begin, login_complete,
     index, login_page, register_page, validate_account, logout,
     recover_page, recover_account, reset_account,
 };
 use crate::backend::handlers_auth::{create_post, home, like_post};
+use crate::consts;
 
 /// Initialisation du routeur principal et des middlewares
 pub fn get_router() -> Router {
@@ -62,5 +64,7 @@ fn auth_routes() -> Router {
         .route("/home", get(home)) // Page principale
         .route("/post/like", post(like_post)) // Ajout d'un like à un post
         .route("/post/create", post(create_post)) // Ajout d'un post
+        // TODO ask if alright
+        .nest_service("/uploads", ServeDir::new(consts::UPLOADS_DIR))
         .layer(axum::middleware::from_extractor::<crate::backend::middlewares::SessionUser>()) // Middleware pour vérifier l'utilisateur connecté
 }
