@@ -9,9 +9,9 @@
 <body>
 <nav class="navbar navbar-light bg-light">
     <div class="container-fluid">
-        <a class="navbar-brand" href="{{#if session.email}}/home{{else}}/{{/if}}">SLH - Laboratoire 2</a>
+        <a class="navbar-brand" href="{{#if authenticated}}/home{{else}}/{{/if}}">SLH - Laboratoire 2</a>
         <div>
-            {{#if session.email}}
+            {{#if authenticated}}
                 <a href="/logout" class="btn btn-outline-danger me-2">Logout</a>
             {{else}}
                 <a href="/login" class="btn btn-outline-primary me-2">Login</a>

@@ -31,7 +31,7 @@ pub(crate) static REGISTRATION_STATES: Lazy<RwLock<HashMap<String, StoredRegistr
 static AUTHENTICATION_STATES: Lazy<RwLock<HashMap<String, TimedStoredState<PasskeyAuthentication>>>> = Lazy::new(Default::default);
 
 /// Ensures that the webauthn is aware of the user's, if it is stored in the database.
-async fn ensure_store_known_user_passkey(email: &str) {
+async fn ensure_store_contains_known_user_passkey(email: &str) {
     let mut store = CREDENTIAL_STORE.write().await;
     if store.get(email).is_none() {
         if let Ok(Some(passkey)) = user::get_passkey(email) {
@@ -50,7 +50,7 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     // Ensure the user's passkey is loaded if present in the database
-    ensure_store_known_user_passkey(email).await;
+    ensure_store_contains_known_user_passkey(email).await;
 
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
     match (reset_mode, user::exists(email)) {
@@ -155,7 +155,7 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     // Ensure the user's passkey is loaded if present in the database
-    ensure_store_known_user_passkey(email).await;
+    ensure_store_contains_known_user_passkey(email).await;
 
     // Check user exists and is verified before starting authentication
     match user::get(email) {
@@ -287,9 +287,10 @@ pub async fn reset_account(Path(token): Path<String>) -> Html<String> {
 ///
 /// Affiche la page d'accueil
 pub async fn index(session: tower_sessions::Session) -> impl IntoResponse {
-    let is_logged_in = session.get::<String>("email").is_ok();
+    let is_logged_in = session.get::<bool>("authenticated").unwrap_or_default().is_some();
     let mut data = HashMap::new();
-    data.insert("logged_in", is_logged_in);
+    // TODO mismatch between template and value here
+    data.insert("authenticated", is_logged_in);
 
     HBS.render("index", &data)
         .map(Html)

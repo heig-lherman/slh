@@ -24,12 +24,17 @@
             <label for="email" class="form-label">Email</label>
             <input type="email" class="form-control form-control-sm" id="email" placeholder="Enter your email" autocomplete="email" required>
         </div>
-        <button type="button" class="btn btn-primary btn-sm w-100" onclick="startRecovery()">Recover Account</button>
+        <button type="submit" class="btn btn-primary btn-sm w-100">Recover Account</button>
     </form>
     <div id="recovery_status" class="mt-3"></div>
 </div>
 
 <script>
+    document.getElementById('recover_form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        startRecovery();
+    });
+    
     async function startRecovery() {
         const email = document.getElementById("email").value;
 

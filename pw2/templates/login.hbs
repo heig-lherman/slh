@@ -23,7 +23,7 @@
             <label for="email" class="form-label">Email</label>
             <input type="email" class="form-control form-control-sm" id="email" name="email" required>
         </div>
-        <button type="button" class="btn btn-primary btn-sm w-100" onclick="startLogin()">Login</button>
+        <button type="submit" class="btn btn-primary btn-sm w-100">Login</button>
     </form>
 
     <div class="text-center mt-3">
@@ -32,6 +32,11 @@
 </div>
 
 <script>
+    document.getElementById('login_form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        startLogin();
+    });
+    
     async function startLogin() {
         const email = document.getElementById("email").value;
 
