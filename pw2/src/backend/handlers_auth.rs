@@ -1,11 +1,13 @@
 //! Gestion des routes nécessitant une authentification utilisateur.
 
+use crate::consts;
+use crate::utils::input::{sanitize_filename, validate_image, TextualContent};
+use anyhow::anyhow;
 use axum::{
     extract::{Multipart, Query},
     response::{Html, IntoResponse},
-    Json, Extension,
+    Extension, Json,
 };
-use anyhow::anyhow;
 use handlebars::Handlebars;
 use http::StatusCode;
 use once_cell::sync::Lazy;
@@ -19,8 +21,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 use uuid::Uuid;
-use crate::consts;
-use crate::utils::input::{sanitize_filename, validate_image, TextualContent};
 
 /// Modèle représentant un post avec des likes
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -63,7 +63,7 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
 
         if field_name == "text" {
             let text = field.text().await.unwrap_or_default();
-            text_content = TextualContent::try_new(&text);
+            text_content = TextualContent::try_new_long_form_content(&text);
         } else if field_name == "file" {
             let filename = sanitize_filename(field.file_name().unwrap_or_default());
             let file_bytes = field.bytes().await?;

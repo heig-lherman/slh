@@ -1,20 +1,19 @@
 //! Configuration des routes pour l'application.
 //! Définit les routes accessibles avec ou sans authentification et configure les middlewares.
 
-use axum::{Router, routing::{get, post}, BoxError};
-use axum::error_handling::HandleErrorLayer;
-use http::StatusCode;
-use tower_sessions::{SessionManagerLayer, MemoryStore};
-use tower_http::cors::{Any, CorsLayer};
-use tower::{ServiceBuilder};
-use tower_http::services::ServeDir;
-use crate::backend::handlers_unauth::{
-    register_begin, register_complete, login_begin, login_complete,
-    index, login_page, register_page, validate_account, logout,
-    recover_page, recover_account, reset_account,
-};
 use crate::backend::handlers_auth::{create_post, home, like_post};
+use crate::backend::handlers_unauth::{
+    index, login_begin, login_complete, login_page, logout, recover_account, recover_page,
+    register_begin, register_complete, register_page, reset_account, validate_account,
+};
 use crate::consts;
+use axum::error_handling::HandleErrorLayer;
+use axum::{routing::{get, post}, BoxError, Router};
+use http::StatusCode;
+use tower::ServiceBuilder;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
+use tower_sessions::{MemoryStore, SessionManagerLayer};
 
 /// Initialisation du routeur principal et des middlewares
 pub fn get_router() -> Router {
@@ -64,7 +63,6 @@ fn auth_routes() -> Router {
         .route("/home", get(home)) // Page principale
         .route("/post/like", post(like_post)) // Ajout d'un like à un post
         .route("/post/create", post(create_post)) // Ajout d'un post
-        // TODO ask if alright
         .nest_service("/uploads", ServeDir::new(consts::UPLOADS_DIR))
         .layer(axum::middleware::from_extractor::<crate::backend::middlewares::SessionUser>()) // Middleware pour vérifier l'utilisateur connecté
 }

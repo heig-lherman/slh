@@ -2,34 +2,28 @@
 //! Contient les handlers pour les pages publiques, l'inscription, la connexion,
 //! la récupération de compte et la validation d'utilisateur.
 
+use crate::database::{token, user};
+use crate::email::send_mail;
+use crate::utils::input::{TextualContent, UserEmail};
+use crate::utils::webauthn::{begin_authentication, begin_registration, complete_authentication, complete_registration, CREDENTIAL_STORE};
+use crate::HBS;
 use axum::{
-    extract::{Path, Json, Query},
-    response::{Redirect, IntoResponse, Html},
+    extract::{Json, Path, Query},
     http::StatusCode,
+    response::{Html, IntoResponse, Redirect},
 };
-
+use log::{debug, error};
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use log::{debug, error};
 use tokio::sync::RwLock;
 use tower_sessions::Session;
-use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, RegisterPublicKeyCredential};
-use crate::HBS;
-use crate::database::{user, token};
-use crate::email::send_mail;
-use crate::utils::input::{TextualContent, UserEmail};
-use crate::utils::webauthn::{begin_registration, complete_registration, begin_authentication, complete_authentication, StoredRegistrationState, CREDENTIAL_STORE};
-
-/// Structure pour gérer un état temporaire avec un challenge
-struct TimedStoredState<T> {
-    state: T,
-    server_challenge: String,
-}
+use uuid::Uuid;
+use webauthn_rs::prelude::{PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential};
 
 /// Stockage des états d'enregistrement et d'authentification
-pub(crate) static REGISTRATION_STATES: Lazy<RwLock<HashMap<String, StoredRegistrationState>>> = Lazy::new(Default::default);
-static AUTHENTICATION_STATES: Lazy<RwLock<HashMap<String, TimedStoredState<PasskeyAuthentication>>>> = Lazy::new(Default::default);
+pub(crate) static REGISTRATION_STATES: Lazy<RwLock<HashMap<String, PasskeyRegistration>>> = Lazy::new(Default::default);
+static AUTHENTICATION_STATES: Lazy<RwLock<HashMap<String, PasskeyAuthentication>>> = Lazy::new(Default::default);
 
 /// Ensures that the webauthn is aware of the user's, if it is stored in the database.
 async fn ensure_store_contains_known_user_passkey(email: &str) {
@@ -43,8 +37,6 @@ async fn ensure_store_contains_known_user_passkey(email: &str) {
     }
 }
 
-// TODO do we need to validate inputs here as well?
-
 /// Début du processus d'enregistrement WebAuthn
 pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Json<serde_json::Value>> {
     let email = payload
@@ -56,6 +48,9 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
     // Ensure the user's passkey is loaded if present in the database
     ensure_store_contains_known_user_passkey(email.as_ref()).await;
 
+    // NOTE: the way reset_mode works here introduces a security vulnerability where anyone can
+    //       reset the passkey of anyone without going through the recovery token process. This
+    //       allows anyone to steal anyone's account.
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
     match (reset_mode, user::exists(email.as_ref())) {
         (true, Ok(true)) => (), // If reset mode is enabled, then the use must exist
@@ -63,9 +58,7 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
         (_, _) => return Err((StatusCode::BAD_REQUEST, "Invalid registration request").into()), // Otherwise, it's invalid
     }
 
-    // TODO we have no way of verifying that the user with reset_mode = true came from the reset link, massive security issue ??
-
-    let state_id = uuid::Uuid::new_v4();
+    let state_id = Uuid::new_v4();
     let (pk, registration_state) = begin_registration(email.as_ref(), email.as_ref())
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to start registration"))?;
@@ -74,10 +67,7 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
     REGISTRATION_STATES
         .write()
         .await
-        .insert(state_id.into(), StoredRegistrationState {
-            registration_state,
-            challenge: pk["challenge"].as_str().unwrap_or_default().into(),
-        });
+        .insert(state_id.into(), registration_state);
 
     Ok(Json(json!({
         "publicKey": pk,
@@ -98,22 +88,25 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
     let first_name = payload
         .get("first_name")
         .and_then(Value::as_str)
-        .and_then(TextualContent::try_new)
+        .and_then(TextualContent::try_new_short_form_content)
         .ok_or((StatusCode::BAD_REQUEST, "First name is required"))?;
     let last_name = payload
         .get("last_name")
         .and_then(Value::as_str)
-        .and_then(TextualContent::try_new)
+        .and_then(TextualContent::try_new_short_form_content)
         .ok_or((StatusCode::BAD_REQUEST, "Last name is required"))?;
 
     // Fetch the saved state
     let state_id = payload
         .get("state_id")
         .and_then(Value::as_str)
+        .and_then(|v| Uuid::parse_str(v).ok())
         .ok_or((StatusCode::BAD_REQUEST, "Invalid request parameters"))?;
     let stored_state = {
         let mut states = REGISTRATION_STATES.write().await;
-        states.remove(state_id).ok_or((StatusCode::BAD_REQUEST, "Invalid registration session"))?
+        states
+            .remove(state_id.to_string().as_str())
+            .ok_or((StatusCode::BAD_REQUEST, "Invalid registration session"))?
     };
 
     let cred = payload
@@ -172,7 +165,7 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
         Some(_) => {} // User exists and is verified, continue with authentication
     }
 
-    let state_id = uuid::Uuid::new_v4();
+    let state_id = Uuid::new_v4();
     let (pk, state) = begin_authentication(email.as_ref())
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to start authentication"))?;
@@ -181,10 +174,7 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
     AUTHENTICATION_STATES
         .write()
         .await
-        .insert(state_id.into(), TimedStoredState {
-            state,
-            server_challenge: pk["challenge"].as_str().unwrap_or_default().into(),
-        });
+        .insert(state_id.into(), state);
 
     Ok(Json(json!({
         "publicKey": pk,
@@ -198,7 +188,10 @@ pub async fn login_complete(
     Json(payload): Json<serde_json::Value>,
 ) -> axum::response::Result<Redirect> {
     let response = payload.get("response").ok_or_else(|| (StatusCode::BAD_REQUEST, "Response is required"))?;
-    let state_id = payload.get("state_id").and_then(Value::as_str).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
+    let state_id = payload.get("state_id")
+        .and_then(Value::as_str)
+        .and_then(|v| Uuid::parse_str(v).ok())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
     let cred: PublicKeyCredential = serde_json::from_value(response.clone())
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid response"))?;
@@ -206,11 +199,13 @@ pub async fn login_complete(
     // Fetch the saved state
     let stored_state = {
         let mut states = AUTHENTICATION_STATES.write().await;
-        states.remove(state_id).ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid authentication session"))?
+        states
+            .remove(state_id.to_string().as_str())
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid authentication session"))?
     };
 
     // Complete the authentication
-    complete_authentication(&cred, &stored_state.state, &stored_state.server_challenge)
+    complete_authentication(&cred, &stored_state)
         .await
         .map_err(|_| (StatusCode::BAD_REQUEST, "Failed to complete authentication"))?;
 
@@ -224,7 +219,7 @@ pub async fn login_complete(
 
 /// Gère la déconnexion de l'utilisateur
 pub async fn logout(session: Session) -> impl IntoResponse {
-    session.delete(); // TODO: ask why hasn't been done
+    session.delete();
     Redirect::to("/")
 }
 
@@ -298,7 +293,6 @@ pub async fn reset_account(Path(token): Path<String>) -> Html<String> {
 pub async fn index(session: tower_sessions::Session) -> impl IntoResponse {
     let is_logged_in = session.get::<bool>("authenticated").unwrap_or_default().is_some();
     let mut data = HashMap::new();
-    // TODO mismatch between template and value here
     data.insert("authenticated", is_logged_in);
 
     HBS.render("index", &data)

@@ -17,7 +17,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         if let Some(session) = parts.extensions.get::<Session>() {
-            // TODO: massive security issue: this doesn't actually check if the user is logged in...
+            // NOTE: fixed to make it work, before it was returning true for everyone.
             if session.get::<bool>("authenticated").unwrap_or_default().is_some() {
                 return Ok(SessionUser);
             }

@@ -9,8 +9,6 @@ use once_cell::sync::Lazy;
 use url::Url;
 use tokio::sync::RwLock;
 
-// TODO ask if tests in rust code
-
 // Initialisation globale de WebAuthn
 static WEBAUTHN: Lazy<Webauthn> = Lazy::new(|| {
     let rp_id = "localhost";
@@ -24,12 +22,6 @@ static WEBAUTHN: Lazy<Webauthn> = Lazy::new(|| {
 
 // Store sécurisé pour les passkeys
 pub static CREDENTIAL_STORE: Lazy<RwLock<HashMap<String, Passkey>>> = Lazy::new(Default::default);
-
-// Structure pour stocker l'état d'enregistrement
-pub(crate) struct StoredRegistrationState {
-    pub registration_state: PasskeyRegistration,
-    pub challenge: String,
-}
 
 /// Démarrer l'enregistrement WebAuthn
 pub async fn begin_registration(
@@ -76,17 +68,11 @@ pub async fn begin_registration(
 pub async fn complete_registration(
     user_email: &str,
     response: &RegisterPublicKeyCredential,
-    stored_state: &StoredRegistrationState,
+    stored_state: &PasskeyRegistration,
 ) -> Result<()> {
-    // TODO: we shouldn't need to validate the challenge ourselves, the library already does that, ask about this
-    //       ref stored_state.challenge
-
     // Complete the registration
     let passkey = WEBAUTHN
-        .finish_passkey_registration(
-            response,
-            &stored_state.registration_state,
-        )
+        .finish_passkey_registration(response, &stored_state)
         .context("Failed to complete registration")?;
 
     // Store the credential
@@ -124,9 +110,7 @@ pub async fn begin_authentication(user_email: &str) -> Result<(serde_json::Value
 pub async fn complete_authentication(
     response: &PublicKeyCredential,
     state: &PasskeyAuthentication,
-    server_challenge: &str,
 ) -> Result<()> {
-    // TODO ask about the client_data_json and server_challenge given the challenge verification is already done in the library
     // Complete the authentication
     WEBAUTHN
         .finish_passkey_authentication(response, state)
