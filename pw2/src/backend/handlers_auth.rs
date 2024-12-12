@@ -20,7 +20,7 @@ use std::{
 };
 use uuid::Uuid;
 use crate::consts;
-use crate::utils::input::{sanitize_filename, sanitize_html, validate_image};
+use crate::utils::input::{sanitize_filename, validate_image, TextualContent};
 
 /// Modèle représentant un post avec des likes
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -63,7 +63,7 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
 
         if field_name == "text" {
             let text = field.text().await.unwrap_or_default();
-            text_content = sanitize_html(&text);
+            text_content = TextualContent::try_new(&text);
         } else if field_name == "file" {
             let filename = sanitize_filename(field.file_name().unwrap_or_default());
             let file_bytes = field.bytes().await?;
@@ -90,7 +90,7 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
     let text = text_content.ok_or((StatusCode::BAD_REQUEST, "Text content is required"))?;
     let image_path = uploaded_file_path;
 
-    let post_id = save_post(&text, image_path.as_deref());
+    let post_id = save_post(&text.as_ref(), image_path.as_deref());
 
     Ok(Json(json!({ "post_id": post_id })))
 }

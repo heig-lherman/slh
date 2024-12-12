@@ -1,8 +1,42 @@
 // TODO ask about email validation for unauth handlers???
 
+use ammonia::is_html;
 use anyhow::{bail, Result};
 use image::ImageFormat;
 use std::path::Path;
+use validator::ValidateEmail;
+
+/// Wrapper around an email address
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UserEmail(String);
+
+impl UserEmail {
+    /// Attempts to create a new `UserEmail` instance from a string
+    ///
+    /// # Arguments
+    /// * `email` - The raw email address to validate
+    ///
+    /// # Returns
+    /// * `Some(UserEmail)` if email is valid
+    /// * `None` if email is empty or invalid
+    pub fn try_new(email: &str) -> Option<Self> {
+        let trimmed = email.trim();
+        if trimmed.is_empty() || !trimmed.validate_email() {
+            None
+        } else {
+            Some(Self(trimmed.to_owned()))
+        }
+    }
+}
+
+/// Implementation of `AsRef<str>` for `UserEmail`
+///
+/// Allows for cheap conversion to a string slice for use in other functions
+impl AsRef<str> for UserEmail {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
 
 /// Maximum size allowed for uploaded images in bytes (5MB)
 const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024;
@@ -58,20 +92,37 @@ pub fn sanitize_filename(original_filename: &str) -> String {
     format!("{}.{}", uuid::Uuid::new_v4(), extension)
 }
 
-/// Sanitizes content that may contain HTML to only extract the inner text.
-/// Behind the scenes, this uses DOM parsing to extract textual nodes and remove any HTML tags.
+/// Wrapper around textual content given by an external source
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TextualContent(String);
+
+/// Implementation of `TextualContent`
+impl TextualContent {
+    /// Attempts to create a new `TextualContent` instance from a string
+    ///
+    /// # Arguments
+    /// * `content` - The raw content to validate
+    ///
+    /// # Returns
+    /// * `Some(TextualContent)` if content is valid
+    /// * `None` if content is empty or unsafe
+    pub fn try_new(content: &str) -> Option<Self> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() || is_html(trimmed) {
+            None
+        } else {
+            Some(Self(trimmed.to_owned()))
+        }
+    }
+}
+
+/// Implementation of `AsRef<str>` for `TextualContent`
 ///
-/// # Arguments
-/// * `content` - The raw content to sanitize
-///
-/// # Returns
-/// * `Some(String)` containing sanitized content if valid
-/// * `None` if content is empty
-pub fn sanitize_html(content: &str) -> Option<String> {
-    sanitize_html::sanitize_str(&sanitize_html::rules::predefined::DEFAULT, content)
-        .ok()
-        .map(|clean| clean.trim().to_owned())
-        .filter(|clean| !clean.is_empty())
+/// Allows for cheap conversion to a string slice for use in other functions
+impl AsRef<str> for TextualContent {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
 }
 
 #[cfg(test)]
@@ -124,35 +175,128 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_html_strips_all_tags() {
+    fn test_textual_content_strips_all_tags() {
         let input = "<p>Hello <strong>World</strong>!</p>";
-        let clean = sanitize_html(input).unwrap();
-        assert_eq!(clean, "Hello World!");
+        assert!(TextualContent::try_new(input).is_none());
     }
 
     #[test]
-    fn test_sanitize_html_empty() {
+    fn test_textual_content_empty() {
         let input = "   ";
-        assert!(sanitize_html(input).is_none());
+        assert!(TextualContent::try_new(input).is_none());
     }
 
     #[test]
-    fn test_sanitize_html_only_tags() {
+    fn test_textual_content_only_tags() {
         let input = "<div><span></span></div>";
-        assert!(sanitize_html(input).is_none());
+        assert!(TextualContent::try_new(input).is_none());
     }
 
     #[test]
-    fn test_sanitize_html_with_script() {
+    fn test_textual_content_with_script() {
         let input = "<script>alert('xss')</script>Hello";
-        let clean = sanitize_html(input).unwrap();
-        assert_eq!(clean, "Hello");
+        assert!(TextualContent::try_new(input).is_none());
     }
 
     #[test]
-    fn test_sanitize_html_mixed_content() {
+    fn test_textual_content_mixed_content() {
         let input = "Hello <b>there</b> & welcome";
-        let clean = sanitize_html(input).unwrap();
-        assert_eq!(clean, "Hello there &amp; welcome");
+        assert!(TextualContent::try_new(input).is_none());
+    }
+
+    #[test]
+    fn test_textual_content_valid() {
+        let input = "   Hello there & welcome   ";
+        let clean = TextualContent::try_new(input).unwrap();
+        assert_eq!(clean.as_ref(), input.trim());
+    }
+
+    #[test]
+    fn test_textual_content_clean() {
+        let input = "Hello there & welcome";
+        let clean = TextualContent::try_new(input).unwrap();
+        assert_eq!(clean.as_ref(), input);
+    }
+
+    #[test]
+    fn test_valid_email_addresses() {
+        let valid_emails = vec![
+            "user@example.com",
+            "user.name@example.com",
+            "user+tag@example.com",
+            "user@subdomain.example.com",
+            "123@example.com",
+            "user@example.co.uk",
+            "user-name@example.com",
+            "u@example.com",
+            "user@example-site.com",
+            "user.name+tag@example.com",
+        ];
+
+        for email in valid_emails {
+            assert!(UserEmail::try_new(email).is_some(), "Email should be valid: {}", email);
+
+            // Verify the email is stored exactly as provided
+            if let Some(user_email) = UserEmail::try_new(email) {
+                assert_eq!(user_email.as_ref(), email);
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_email_addresses() {
+        let invalid_emails = vec![
+            "",
+            " ",
+            "invalid",
+            "@example.com",
+            "user@",
+            "user@.com",
+            "user@example.",
+            "user name@example.com",
+            "user@exam ple.com",
+            "user@@example.com",
+            "user@example..com",
+        ];
+
+        for email in invalid_emails {
+            assert!(UserEmail::try_new(email).is_none(), "Email should be invalid: {}", email);
+        }
+    }
+
+    #[test]
+    fn test_email_whitespace_handling() {
+        // Test that leading/trailing whitespace is properly trimmed
+        let email_with_whitespace = vec![
+            " user@example.com",
+            "user@example.com ",
+            "\tuser@example.com\t",
+            "\nuser@example.com\n",
+            "  user@example.com  ",
+        ];
+
+        for email in email_with_whitespace {
+            let cleaned_email = "user@example.com";
+            let user_email = UserEmail::try_new(email);
+
+            assert!(user_email.is_some(), "Email should be valid after trimming: {}", email);
+            assert_eq!(user_email.unwrap().as_ref(), cleaned_email);
+        }
+    }
+
+    #[test]
+    fn test_email_as_ref_implementation() {
+        let email = "user@example.com";
+        let user_email = UserEmail::try_new(email).unwrap();
+
+        // Test AsRef<str> implementation
+        let reference: &str = user_email.as_ref();
+        assert_eq!(reference, email);
+
+        // Verify it works in contexts requiring AsRef<str>
+        fn takes_str_ref<T: AsRef<str>>(value: &T) -> &str {
+            value.as_ref()
+        }
+        assert_eq!(takes_str_ref(&user_email), email);
     }
 }

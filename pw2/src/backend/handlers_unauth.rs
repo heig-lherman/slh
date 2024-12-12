@@ -9,7 +9,7 @@ use axum::{
 };
 
 use once_cell::sync::Lazy;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use log::{debug, error};
 use tokio::sync::RwLock;
@@ -18,6 +18,7 @@ use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, RegisterP
 use crate::HBS;
 use crate::database::{user, token};
 use crate::email::send_mail;
+use crate::utils::input::{TextualContent, UserEmail};
 use crate::utils::webauthn::{begin_registration, complete_registration, begin_authentication, complete_authentication, StoredRegistrationState, CREDENTIAL_STORE};
 
 /// Structure pour gérer un état temporaire avec un challenge
@@ -42,18 +43,21 @@ async fn ensure_store_contains_known_user_passkey(email: &str) {
     }
 }
 
+// TODO do we need to validate inputs here as well?
+
 /// Début du processus d'enregistrement WebAuthn
 pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Json<serde_json::Value>> {
     let email = payload
         .get("email")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(UserEmail::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     // Ensure the user's passkey is loaded if present in the database
-    ensure_store_contains_known_user_passkey(email).await;
+    ensure_store_contains_known_user_passkey(email.as_ref()).await;
 
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
-    match (reset_mode, user::exists(email)) {
+    match (reset_mode, user::exists(email.as_ref())) {
         (true, Ok(true)) => (), // If reset mode is enabled, then the use must exist
         (false, Ok(false)) => (), // If reset mode is disabled, then the user must not exist
         (_, _) => return Err((StatusCode::BAD_REQUEST, "Invalid registration request").into()), // Otherwise, it's invalid
@@ -62,7 +66,7 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
     // TODO we have no way of verifying that the user with reset_mode = true came from the reset link, massive security issue ??
 
     let state_id = uuid::Uuid::new_v4();
-    let (pk, registration_state) = begin_registration(email, email)
+    let (pk, registration_state) = begin_registration(email.as_ref(), email.as_ref())
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to start registration"))?;
 
@@ -85,24 +89,27 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
 pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::response::Result<StatusCode> {
     let email = payload
         .get("email")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(UserEmail::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let first_name = payload
         .get("first_name")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(TextualContent::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "First name is required"))?;
     let last_name = payload
         .get("last_name")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(TextualContent::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "Last name is required"))?;
 
     // Fetch the saved state
     let state_id = payload
         .get("state_id")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
         .ok_or((StatusCode::BAD_REQUEST, "Invalid request parameters"))?;
     let stored_state = {
         let mut states = REGISTRATION_STATES.write().await;
@@ -115,20 +122,20 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
         .ok_or((StatusCode::BAD_REQUEST, "Invalid response"))?;
 
     // Complete the registration
-    complete_registration(email, &cred, &stored_state)
+    complete_registration(email.as_ref(), &cred, &stored_state)
         .await
         .map_err(|_| (StatusCode::FORBIDDEN, "Failed to complete registration"))?;
 
-    let passkey = CREDENTIAL_STORE.read().await.get(email).unwrap().clone();
+    let passkey = CREDENTIAL_STORE.read().await.get(email.as_ref()).unwrap().clone();
 
     if !reset_mode {
-        user::create(email, first_name, last_name)
+        user::create(email.as_ref(), first_name.as_ref(), last_name.as_ref())
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to complete registration"))?;
 
-        if let Ok(verification_token) = token::generate(email) {
+        if let Ok(verification_token) = token::generate(email.as_ref()) {
             // Send verification email
             if let Err(_) = send_mail(
-                email,
+                email.as_ref(),
                 "Verify your account",
                 &format!(
                     "Welcome! Please verify your account by clicking this link: http://localhost:8080/validate/{}",
@@ -136,12 +143,12 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
                 ),
             ) {
                 // Log error but don't fail the registration
-                error!("Failed to send verification email to {}", email);
+                error!("Failed to send verification email to {}", email.as_ref());
             }
         }
     }
 
-    user::set_passkey(email, passkey)
+    user::set_passkey(email.as_ref(), passkey)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to complete registration"))?;
 
     Ok(StatusCode::OK)
@@ -151,21 +158,22 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
 pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Json<serde_json::Value>> {
     let email = payload
         .get("email")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(UserEmail::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     // Ensure the user's passkey is loaded if present in the database
-    ensure_store_contains_known_user_passkey(email).await;
+    ensure_store_contains_known_user_passkey(email.as_ref()).await;
 
     // Check user exists and is verified before starting authentication
-    match user::get(email) {
+    match user::get(email.as_ref()) {
         Some(user_data) if !user_data.verified => Err((StatusCode::BAD_REQUEST, "Invalid authentication request"))?,
         None => Err((StatusCode::BAD_REQUEST, "Invalid authentication request"))?,
         Some(_) => {} // User exists and is verified, continue with authentication
     }
 
     let state_id = uuid::Uuid::new_v4();
-    let (pk, state) = begin_authentication(email)
+    let (pk, state) = begin_authentication(email.as_ref())
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to start authentication"))?;
 
@@ -190,7 +198,7 @@ pub async fn login_complete(
     Json(payload): Json<serde_json::Value>,
 ) -> axum::response::Result<Redirect> {
     let response = payload.get("response").ok_or_else(|| (StatusCode::BAD_REQUEST, "Response is required"))?;
-    let state_id = payload.get("state_id").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
+    let state_id = payload.get("state_id").and_then(Value::as_str).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
     let cred: PublicKeyCredential = serde_json::from_value(response.clone())
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid response"))?;
@@ -235,20 +243,21 @@ pub async fn validate_account(Path(token): Path<String>) -> impl IntoResponse {
 pub async fn recover_account(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Html<String>> {
     let email = payload
         .get("email")
-        .and_then(|v| v.as_str())
+        .and_then(Value::as_str)
+        .and_then(UserEmail::try_new)
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    match user::get(email) {
+    match user::get(email.as_ref()) {
         // The user needs to have verified their email
         Some(user) if user.verified => {
             // Generate recovery token
-            let recovery_token = token::generate(email)
+            let recovery_token = token::generate(email.as_ref())
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."))?;
 
             // Send recovery email
             let recovery_link = format!("http://localhost:8080/recover/{}", recovery_token);
             if let Err(_) = send_mail(
-                email,
+                email.as_ref(),
                 "Account Recovery",
                 &format!(
                     "Click the following link to recover your account: {}\n\n\
@@ -256,7 +265,7 @@ pub async fn recover_account(Json(payload): Json<serde_json::Value>) -> axum::re
                     recovery_link
                 ),
             ) {
-                error!("Failed to send recovery email to {}", email);
+                error!("Failed to send recovery email to {}", email.as_ref());
             }
         }
         _ => (),
