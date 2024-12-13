@@ -8,6 +8,7 @@ use validator::{ValidateEmail, ValidateNonControlCharacter};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserEmail(String);
 
+/// Implementation of `UserEmail`
 impl UserEmail {
     /// Attempts to create a new `UserEmail` instance from a string representing an email address
     ///
@@ -23,7 +24,8 @@ impl UserEmail {
     /// * `None` if email is empty or invalid
     pub fn try_new(email: &str) -> Option<Self> {
         let trimmed = email.trim();
-        if trimmed.is_empty() || !trimmed.validate_email() {
+        // NOTE: validate_email also validates for size-constraints
+        if !trimmed.validate_email() {
             None
         } else {
             Some(Self(trimmed.to_owned()))
@@ -40,9 +42,6 @@ impl AsRef<str> for UserEmail {
     }
 }
 
-/// Maximum size allowed for uploaded images in bytes (5MB)
-const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024;
-
 /// Validates an uploaded image file
 ///
 /// # Arguments
@@ -53,11 +52,6 @@ const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024;
 /// * `Ok(())` if validation passes
 /// * `Err` with message if validation fails
 pub fn validate_image(bytes: &[u8], filename: &str) -> Result<()> {
-    // Check file size
-    if bytes.len() > MAX_IMAGE_SIZE {
-        bail!("File is too large. Maximum size is 5MB");
-    }
-
     // Check file extension
     match {
         Path::new(filename)
@@ -81,22 +75,6 @@ pub fn validate_image(bytes: &[u8], filename: &str) -> Result<()> {
         Ok(_) => Ok(()),
         Err(_) => bail!("Invalid image format"),
     }
-}
-
-/// Sanitizes a filename to prevent directory traversal and ensure uniqueness
-///
-/// # Arguments
-/// * `original_filename` - The original uploaded filename
-///
-/// # Returns
-/// * A sanitized unique filename
-pub fn sanitize_filename(original_filename: &str) -> String {
-    let extension = Path::new(original_filename)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("jpg");
-
-    format!("{}.{}", uuid::Uuid::new_v4(), extension)
 }
 
 /// Wrapper around textual content given by an external source
@@ -178,30 +156,8 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_image_too_large() {
-        // Create a byte vector larger than MAX_IMAGE_SIZE
-        let large_bytes = vec![0; MAX_IMAGE_SIZE + 1];
-        assert!(validate_image(&large_bytes, "large.jpg").is_err());
-    }
-
-    #[test]
-    fn test_sanitize_filename() {
-        let filename = sanitize_filename("../../../dangerous.jpg");
-        assert!(filename.ends_with(".jpg"));
-        assert!(!filename.contains(".."));
-        assert!(uuid::Uuid::parse_str(&filename[..36]).is_ok());
-    }
-
-    #[test]
     fn test_validate_image_empty() {
         assert!(validate_image(&[], "empty.jpg").is_err());
-    }
-
-    #[test]
-    fn test_sanitize_filename_no_extension() {
-        let filename = sanitize_filename(".noextension");
-        assert!(filename.ends_with(".jpg"));
-        assert!(uuid::Uuid::parse_str(&filename[..36]).is_ok());
     }
 
     // Helper function to create test strings of specific lengths

@@ -1,7 +1,7 @@
 //! Gestion des routes nécessitant une authentification utilisateur.
 
 use crate::consts;
-use crate::utils::input::{sanitize_filename, validate_image, TextualContent};
+use crate::utils::input::{validate_image, TextualContent};
 use anyhow::anyhow;
 use axum::{
     extract::{Multipart, Query},
@@ -65,16 +65,17 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
             let text = field.text().await.unwrap_or_default();
             text_content = TextualContent::try_new_long_form_content(&text);
         } else if field_name == "file" {
-            let filename = sanitize_filename(field.file_name().unwrap_or_default());
+            let original_filename = field.file_name().unwrap_or_default().to_string();
+            let filename = format!("{}.jpg", Uuid::new_v4());
             let file_bytes = field.bytes().await?;
+
+            if !validate_image(&file_bytes, &original_filename).is_ok() {
+                return Err((StatusCode::BAD_REQUEST, "Invalid image file").into());
+            }
 
             let uploads_dir = consts::UPLOADS_DIR;
             if !Path::new(uploads_dir).exists() {
                 create_dir_all(uploads_dir).unwrap();
-            }
-
-            if !validate_image(&file_bytes, &filename).is_ok() {
-                return Err((StatusCode::BAD_REQUEST, "Invalid image file").into());
             }
 
             let file_path = format!("{}/{}", uploads_dir, filename);
