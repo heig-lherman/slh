@@ -1,1 +1,25 @@
-p, read-data, r.sub.role == "Admin"
+p,read-data,r.sub.role == "Admin"
+p,update-data,r.sub.role == "Admin"
+p,delete-data,r.sub.role == "Admin"
+p,add-report,r.sub.role == "Admin"
+p,read-report,r.sub.role == "Admin"
+p,update-report,r.sub.role == "Admin"
+p,update-role,r.sub.role == "Admin"
+p,add-doctor,r.sub.role == "Admin"
+p,remove-doctor,r.sub.role == "Admin"
+
+p,read-data,r.sub.id == r.obj.id
+p,update-data,r.sub.id == r.obj.id
+p,delete-data,r.sub.id == r.obj.id
+
+p,add-doctor,r.sub.id == r.obj.patient.id
+p,remove-doctor,r.sub.id == r.obj.patient.id
+
+p,read-data,r.obj.medical_folder && r.obj.has_doctor(r.sub.id)
+
+p,add-report,r.sub.role == "Doctor" && r.obj.patient.medical_folder
+
+p,read-report,r.sub.id == r.obj.author
+p,update-report,r.sub.id == r.obj.author
+
+p,read-report,r.sub.role == "Doctor" && r.obj.patient.has_doctor(r.sub.id)
