@@ -1,0 +1,57 @@
+{
+  "users": {
+    "ab16cb36-2c4a-4021-ae63-527be02f4c2e": {
+      "id": "ab16cb36-2c4a-4021-ae63-527be02f4c2e",
+      "role": "Admin",
+      "username": "admin",
+      "password": "$argon2id$v=19$m=19456,t=2,p=1$0CU3o1AHkkQKs/AwQ5mNdA$xGuqqBjmxu2cLrLGxePAojKCmpEUJZKyI+7vkjAAxOw",
+      "medical_folder": null
+    },
+    "7b0c61cc-bf4d-481e-a233-39ce66288d09": {
+      "id": "7b0c61cc-bf4d-481e-a233-39ce66288d09",
+      "role": "Doctor",
+      "username": "medecin1",
+      "password": "$argon2id$v=19$m=19456,t=2,p=1$89TwmXhynCOmQbuKefFVZg$3pHqNK5FZUIMlehlM/2gdrSHpg2GP0S5v0vb7CLCazo",
+      "medical_folder": null
+    },
+    "25ea98f2-3ea9-49b1-a8c3-d76737139fe4": {
+      "id": "25ea98f2-3ea9-49b1-a8c3-d76737139fe4",
+      "role": "Doctor",
+      "username": "medecin2",
+      "password": "$argon2id$v=19$m=19456,t=2,p=1$qtY0GhYjSF412SY+fqWJsw$hD8/WGjzcsk52iWgqa+gSVozdEFhG0Z7mvLTkqhKW9U",
+      "medical_folder": null
+    },
+    "3fa47071-25cd-4efb-bfcd-128f3344f2b2": {
+      "id": "3fa47071-25cd-4efb-bfcd-128f3344f2b2",
+      "role": "Patient",
+      "username": "patient",
+      "password": "$argon2id$v=19$m=19456,t=2,p=1$3T/1maZ5kEn+3dSDRvPGCw$1J0LqS8BuBpS1PYrccX/VXwJfU0Rgq5yKhleBH8ta6c",
+      "medical_folder": {
+        "personal_data": {
+          "avs_number": "756.1234.5678.97",
+          "blood_type": "O"
+        },
+        "doctors": [
+          "7b0c61cc-bf4d-481e-a233-39ce66288d09"
+        ],
+        "medical_reports": []
+      }
+    }
+  },
+  "reports": {
+    "0b0aebae-5ee6-4c47-9ddc-11290c015990": {
+      "id": "0b0aebae-5ee6-4c47-9ddc-11290c015990",
+      "title": "Rapport du M2",
+      "author": "25ea98f2-3ea9-49b1-a8c3-d76737139fe4",
+      "patient": "3fa47071-25cd-4efb-bfcd-128f3344f2b2",
+      "content": "Rapport du M2 !"
+    },
+    "827f3413-f92c-4315-a2cc-7ca15c86ad43": {
+      "id": "827f3413-f92c-4315-a2cc-7ca15c86ad43",
+      "title": "Rapport de médecin 1",
+      "author": "7b0c61cc-bf4d-481e-a233-39ce66288d09",
+      "patient": "3fa47071-25cd-4efb-bfcd-128f3344f2b2",
+      "content": "Rapport du médecin 1\n\nasdasdajsd"
+    }
+  }
+}

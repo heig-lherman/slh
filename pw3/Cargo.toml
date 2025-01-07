@@ -1,0 +1,25 @@
+[package]
+name = "karak"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.94"
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+derive_more = { version = "1.0.0", features = ["display"] }
+strum = "0.26.3"
+strum_macros = "0.26.4"
+log = "0.4.22"
+inquire = { version = "0.7.5", features = ["editor"] }
+futures = "0.3.31"
+argon2 = "0.5.3"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+casbin = { version = "2.1.0", default-features = false, features = ["runtime-async-std", "logging", "incremental"] }
+uuid = { version = "1.11.0", features = ["v4", "serde"] }
+thiserror = "2.0.7"
+simple-logging = "2.0.2"
+
+
