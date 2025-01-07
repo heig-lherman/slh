@@ -11,7 +11,7 @@ use crate::utils::input_validation::{AVSNumber, Username};
 use crate::utils::password_utils::PWHash;
 
 /// Role d'un utilisateur: Médecin, Patient ou Admin
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Hash, EnumIter, Display)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, EnumIter, Display)]
 pub enum Role {
     Doctor,
     Patient,
@@ -58,7 +58,7 @@ impl ReportID {
 ///
 /// Indépendamment de son rôle, un utilisateur peut avoir
 /// un dossier médical, ou pas.
-#[derive(Debug, Serialize, Deserialize, Hash, Display)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Display)]
 #[display("{username}")]
 pub struct UserData {
     pub id: UserID,
@@ -78,7 +78,7 @@ impl UserData {
 }
 
 /// Le contenu d'un rapport médical
-#[derive(Debug, Serialize, Deserialize, Hash, Display)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Display)]
 #[display("{title}")]
 pub struct MedicalReport {
     pub id: ReportID,
@@ -89,7 +89,7 @@ pub struct MedicalReport {
 }
 
 /// Les données personnelles d'un patient
-#[derive(Debug, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 pub struct PersonalData {
     pub avs_number: AVSNumber,
     pub blood_type: BloodType,
@@ -99,7 +99,7 @@ pub struct PersonalData {
 /// Contient des données personnelles génériques,
 /// une liste de rapports, et une liste
 /// de médecins traitants autorisés.
-#[derive(Debug, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 pub struct MedicalFolder {
     pub personal_data: PersonalData,
     pub doctors: BTreeSet<UserID>,

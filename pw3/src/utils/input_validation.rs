@@ -70,7 +70,7 @@ pub fn password_input_validation(username: &str) -> String {
 pub struct InvalidInput;
 
 /// Wrapper type for a username that has been validated
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 pub struct Username(String);
 
 impl TryFrom<String> for Username {
@@ -127,7 +127,7 @@ pub fn username_input_validation(message: &str) -> Result<Username, InvalidInput
 }
 
 /// Wrapper type for an AVS number that has been validated
-#[derive(Debug, Display, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Display, Serialize, Deserialize, Hash)]
 pub struct AVSNumber(String);
 
 impl TryFrom<String> for AVSNumber {
@@ -136,6 +136,18 @@ impl TryFrom<String> for AVSNumber {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if validate_avs_number(&value) {
             Ok(AVSNumber(value))
+        } else {
+            Err(InvalidInput)
+        }
+    }
+}
+
+impl TryFrom<&str> for AVSNumber {
+    type Error = InvalidInput;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if validate_avs_number(value) {
+            Ok(AVSNumber(value.to_owned()))
         } else {
             Err(InvalidInput)
         }
