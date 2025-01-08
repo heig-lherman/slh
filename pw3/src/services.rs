@@ -116,14 +116,20 @@ impl Service {
 
     /// Change le role d'un utilisateur
     pub fn update_role(&mut self, user_id: UserID, new_role: Role) -> Result<(), ServiceError> {
-        // TODO
+        let target = self.db.get_user(user_id)?;
+        self.enforce()?.update_role(target, new_role)?;
+
+        // TODO do we need to save instantly here?
+        let user = self.db.get_user_mut(user_id)?;
+        user.role = new_role;
         Ok(())
     }
 
     /// Récupère les données d'un utilisateur
     pub fn get_data(&self, user_id: UserID) -> Result<&UserData, ServiceError> {
-        // TODO
-        Ok(todo!())
+        let target = self.db.get_user(user_id)?;
+        self.enforce()?.read_data(target)?;
+        Ok(target)
     }
 
     /// Change les données personnelles d'un utilisateur. Si le dossier médical
@@ -133,7 +139,9 @@ impl Service {
         user_id: UserID,
         personal_data: PersonalData,
     ) -> Result<(), ServiceError> {
-        // TODO
+        let target = self.db.get_user(user_id)?;
+        self.enforce()?.update_data(target)?;
+
         let folder = &mut self.db.get_user_mut(user_id)?.medical_folder;
 
         if let Some(folder) = folder {
@@ -148,7 +156,9 @@ impl Service {
     /// (S'il est également médecin, son rôle de médecin n'est pas
     /// affecté)
     pub fn delete_data(&mut self, patient: UserID) -> Result<(), ServiceError> {
-        // TODO
+        let target = self.db.get_user(patient)?;
+        self.enforce()?.delete_data(target)?;
+
         self.db.get_user_mut(patient)?.medical_folder = None;
         self.db.remove_reports(patient);
         Ok(())
@@ -170,7 +180,8 @@ impl Service {
             content,
         };
 
-        // TODO
+        let patient_data = self.db.get_user(patient)?;
+        self.enforce()?.add_report(patient_data, &report)?;
 
         self.db.store_report(report);
         Ok(())
@@ -180,7 +191,7 @@ impl Service {
         self.enforce().ok().into_iter().flat_map(move |ctx| {
             self.db
                 .list_reports()
-                // TODO use .filter() here for access control
+                .filter(move |report| ctx.read_report(report).is_ok())
         })
     }
 
@@ -196,7 +207,10 @@ impl Service {
         patient_id: UserID,
         doctor_id: UserID,
     ) -> Result<(), ServiceError> {
-        // TODO
+        let patient = self.db.get_user(patient_id)?;
+        let doctor = self.db.get_user(doctor_id)?;
+        self.enforce()?.add_doctor(patient, doctor)?;
+
         let patient = self.db.get_user_mut(patient_id)?;
         patient
             .medical_folder
@@ -210,7 +224,10 @@ impl Service {
         patient_id: UserID,
         doctor_id: UserID,
     ) -> Result<(), ServiceError> {
-        // TODO
+        let patient = self.db.get_user(patient_id)?;
+        let doctor = self.db.get_user(doctor_id)?;
+        self.enforce()?.remove_doctor(patient, doctor)?;
+
         let patient = self.db.get_user_mut(patient_id)?;
         patient
             .medical_folder

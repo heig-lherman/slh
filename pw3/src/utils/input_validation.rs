@@ -34,32 +34,23 @@ pub fn password_input_validation(username: &str) -> String {
             .expect("Failed to read password");
 
         if password_validation(&password, username) {
-            // Confirm password
-            let confirm = inquire::Password::new("Confirm password:")
-                .prompt()
-                .expect("Failed to read password confirmation");
+            return password;
+        }
 
-            if password == confirm {
-                return password;
-            }
+        println!("Password is too weak. Please try again. Possible reasons are:");
+        println!("- It is too short or too long (should be 8-64 characters)");
+        println!("- It is too common or similar to your username");
 
-            println!("Passwords do not match. Please try again.");
-        } else {
-            println!("Password is too weak. Please try again. Possible reasons are:");
-            println!("- It is too short or too long (should be 8-64 characters)");
-            println!("- It is too common or similar to your username");
+        let estimate = zxcvbn(&password, &[username]);
+        if estimate.score() < Score::Three {
+            println!("- It is too weak (score: {}/4)", estimate.score());
+            if let Some(feedback) = estimate.feedback() {
+                if let Some(warning) = feedback.warning() {
+                    println!("- {}", warning);
+                }
 
-            let estimate = zxcvbn(&password, &[username]);
-            if estimate.score() < Score::Three {
-                println!("- It is too weak (score: {:?}/4)", estimate.score());
-                if let Some(feedback) = estimate.feedback() {
-                    if let Some(suggestions) = feedback.warning() {
-                        println!("- {:?}", suggestions);
-                    }
-
-                    for suggestion in feedback.suggestions() {
-                        println!("- {:?}", suggestion);
-                    }
+                for suggestion in feedback.suggestions() {
+                    println!("- {}", suggestion);
                 }
             }
         }

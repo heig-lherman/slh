@@ -89,8 +89,8 @@ impl Context<'_> {
         )
     }
 
-    // TODO can't check for doctor policy without having the patient ?
     pub fn read_report(&self, report: &MedicalReport) -> CasbinResult {
+        // TODO can't check for doctor policy without having the patient ?
         self.enforce(report, "read-report")
     }
 
@@ -103,10 +103,12 @@ impl Context<'_> {
     }
 
     pub fn add_doctor(&self, target: &UserData, doctor: &UserData) -> CasbinResult {
+        // TODO is doctor really necessary here?
         self.enforce(json!({"patient": target, "doctor": doctor}), "add-doctor")
     }
 
     pub fn remove_doctor(&self, target: &UserData, doctor: &UserData) -> CasbinResult {
+        // TODO is doctor really necessary here?
         self.enforce(
             json!({"patient": target, "doctor": doctor}),
             "remove-doctor",
@@ -120,7 +122,6 @@ mod tests {
     use crate::models::{BloodType, MedicalFolder, PersonalData, ReportID, UserID};
     use crate::utils::input_validation::{AVSNumber, Username};
     use crate::utils::password_utils::hash;
-    use itertools::Itertools;
     use std::collections::BTreeSet;
     use test_log::test;
 
@@ -158,66 +159,6 @@ mod tests {
     }
 
     // Test cases generator
-    // fn generate_test_cases() -> Vec<(UserData, UserData, MedicalReport)> {
-    //     let roles = vec![Role::Admin, Role::Doctor, Role::Patient];
-    //     let folder_options = vec![true, false];
-    //     let doctor_options = vec![true, false]; // Whether to add the actor as a doctor
-    //
-    //     // Generate all possible combinations of actors (subjects)
-    //     let actors = roles
-    //         .iter()
-    //         .cartesian_product(&folder_options)
-    //         .map(|(&role, &has_folder)| create_user(role, has_folder));
-    //
-    //     // Generate all possible combinations of targets (objects)
-    //     let targets = roles
-    //         .iter()
-    //         .cartesian_product(&folder_options)
-    //         .cartesian_product(&doctor_options)
-    //         .map(|((role, has_folder), has_doctor)| (*role, *has_folder, *has_doctor));
-    //
-    //     // Cross join actors and targets
-    //     actors
-    //         .cartesian_product(targets)
-    //         .flat_map(|(actor, (target_role, target_has_folder, add_doctor))| {
-    //             let mut target = create_user(target_role, target_has_folder);
-    //
-    //             // Add the actor as a doctor if conditions are met:
-    //             // 1. target has a medical folder
-    //             // 2. add_doctor is true
-    //             // 3. actor is a doctor
-    //             if target_has_folder && add_doctor && actor.role == Role::Doctor {
-    //                 if let Some(folder) = &mut target.medical_folder {
-    //                     folder.doctors.insert(actor.id);
-    //                 }
-    //             }
-    //
-    //             // Generate multiple reports to test different scenarios
-    //             vec![
-    //                 // Report by actor
-    //                 (
-    //                     actor.clone(),
-    //                     target.clone(),
-    //                     create_report(&actor, &target)
-    //                 ),
-    //                 // Report by target
-    //                 (
-    //                     actor.clone(),
-    //                     target.clone(),
-    //                     create_report(&target, &target)
-    //                 ),
-    //                 // Report by another doctor
-    //                 (
-    //                     actor.clone(),
-    //                     target.clone(), {
-    //                         let other_doctor = create_user(Role::Doctor, false);
-    //                         create_report(&other_doctor, &target)
-    //                     }
-    //                 ),
-    //             ]
-    //         })
-    //         .collect()
-    // }
     fn generate_test_cases() -> Vec<(UserData, UserData, MedicalReport)> {
         let mut cases = Vec::new();
 
