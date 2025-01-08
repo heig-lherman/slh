@@ -39,6 +39,12 @@ impl UserID {
     }
 }
 
+impl Default for UserID {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Un identifiant unique de rapport médical
 #[derive(
     Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Display,
@@ -48,6 +54,12 @@ pub struct ReportID(Uuid);
 impl ReportID {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
+    }
+}
+
+impl Default for ReportID {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

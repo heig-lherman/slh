@@ -8,7 +8,7 @@ use derive_more::derive::Display;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::LazyLock};
 
-static DEFAULT_HASHER: LazyLock<Argon2<'static>> = LazyLock::new(|| Argon2::default());
+static DEFAULT_HASHER: LazyLock<Argon2<'static>> = LazyLock::new(Argon2::default);
 
 /// Le hash d'un mot de passe vide, à utiliser quand l'utilisateur n'existe pas
 /// pour éviter une attaque par canal auxiliaire
