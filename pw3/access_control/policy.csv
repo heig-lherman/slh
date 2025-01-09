@@ -2,14 +2,13 @@ p,read-data,r.sub.id == r.obj.id
 p,update-data,r.sub.id == r.obj.id
 p,delete-data,r.sub.id == r.obj.id
 
-p,add-doctor,r.sub.id == r.obj.patient.id
-p,remove-doctor,r.sub.id == r.obj.patient.id
-
-p,read-data,r.sub.id in r.obj.medical_folder.doctors
+p,add-doctor,r.sub.id == r.obj.patient.id && (r.obj.doctor.role == "Doctor" || r.obj.doctor.role == "Admin")
+p,remove-doctor,r.sub.id == r.obj.patient.id && (r.obj.doctor.role == "Doctor" || r.obj.doctor.role == "Admin")
 
 p,add-report,r.sub.role == "Doctor" && r.sub.id == r.obj.report.author && r.obj.patient.id == r.obj.report.patient && r.obj.patient.medical_folder != ()
 
-p,read-report,r.sub.id == r.obj.author
+p,read-report,r.sub.id == r.obj.report.author
 p,update-report,r.sub.id == r.obj.author
 
-p,read-report,r.sub.role == "Doctor"
+p,read-data,r.sub.role == "Doctor" && r.obj.medical_folder != () && r.sub.id in r.obj.medical_folder.doctors
+p,read-report,r.sub.role == "Doctor" && r.obj.patient.medical_folder != () && r.sub.id in r.obj.patient.medical_folder.doctors

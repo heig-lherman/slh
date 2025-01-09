@@ -89,9 +89,11 @@ impl Context<'_> {
         )
     }
 
-    pub fn read_report(&self, report: &MedicalReport) -> CasbinResult {
-        // TODO can't check for doctor policy without having the patient ?
-        self.enforce(report, "read-report")
+    pub fn read_report(&self, report: &MedicalReport, patient: &UserData) -> CasbinResult {
+        self.enforce(
+            json!({ "report": report, "patient": patient }),
+            "read-report",
+        )
     }
 
     pub fn update_report(&self, report: &MedicalReport) -> CasbinResult {
@@ -103,12 +105,10 @@ impl Context<'_> {
     }
 
     pub fn add_doctor(&self, target: &UserData, doctor: &UserData) -> CasbinResult {
-        // TODO is doctor really necessary here?
         self.enforce(json!({"patient": target, "doctor": doctor}), "add-doctor")
     }
 
     pub fn remove_doctor(&self, target: &UserData, doctor: &UserData) -> CasbinResult {
-        // TODO is doctor really necessary here?
         self.enforce(
             json!({"patient": target, "doctor": doctor}),
             "remove-doctor",
@@ -123,6 +123,7 @@ mod tests {
     use crate::utils::input_validation::{AVSNumber, Username};
     use crate::utils::password_utils::hash;
     use std::collections::BTreeSet;
+    use strum::IntoEnumIterator;
     use test_log::test;
 
     // Helper functions to create test data
@@ -387,6 +388,42 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_data_permissions() {
+        let enforcer = Enforcer::load().unwrap();
+
+        for (actor, target, _) in generate_test_cases() {
+            let context = enforcer.with_subject(&actor);
+            let result = context.delete_data(&target);
+
+            // Admin can always update
+            if actor.role == Role::Admin {
+                assert!(
+                    result.is_ok(),
+                    "Admin should be able to update any user's data"
+                );
+                continue;
+            }
+
+            // Users can update their own data
+            if actor.id == target.id {
+                assert!(
+                    result.is_ok(),
+                    "User should be able to update their own data"
+                );
+                continue;
+            }
+
+            // All other cases should be denied
+            assert!(
+                result.is_err(),
+                "Unexpected update access granted: {:?} updating {:?}",
+                actor.role,
+                target.role
+            );
+        }
+    }
+
+    #[test]
     fn test_add_report_permissions() {
         let enforcer = Enforcer::load().unwrap();
 
@@ -431,7 +468,7 @@ mod tests {
 
         for (actor, target, report) in generate_test_cases() {
             let context = enforcer.with_subject(&actor);
-            let result = context.read_report(&report);
+            let result = context.read_report(&report, &target);
 
             // Admin can always read reports
             if actor.role == Role::Admin {
@@ -506,43 +543,77 @@ mod tests {
     }
 
     #[test]
+    fn test_admin_update_role() {
+        let enforcer = Enforcer::load().unwrap();
+
+        for actor in Role::iter().map(|role| create_user(role, false)) {
+            let context = enforcer.with_subject(&actor);
+
+            // Test updating role for all users
+            for target in Role::iter().map(|role| create_user(role, false)) {
+                let results = Role::iter().map(|role| context.update_role(&target, role));
+
+                // Admin can always update roles
+                if actor.role == Role::Admin {
+                    assert!(
+                        results.into_iter().all(|res| res.is_ok()),
+                        "Admin should be able to update roles for any user"
+                    );
+                    continue;
+                }
+
+                // All other cases should be denied
+                assert!(
+                    results.into_iter().all(|res| res.is_err()),
+                    "Unexpected role update access granted: {:?} updating role for {:?}",
+                    actor.role,
+                    target.role
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_doctor_management_permissions() {
         let enforcer = Enforcer::load().unwrap();
 
         for (actor, target, _) in generate_test_cases() {
             let context = enforcer.with_subject(&actor);
-            let doctor = create_user(Role::Doctor, false);
+            for doctor in Role::iter().map(|role| create_user(role, false)) {
+                // Test add_doctor
+                let add_result = context.add_doctor(&target, &doctor);
+                // Test remove_doctor
+                let remove_result = context.remove_doctor(&target, &doctor);
 
-            // Test add_doctor
-            let add_result = context.add_doctor(&target, &doctor);
-            // Test remove_doctor
-            let remove_result = context.remove_doctor(&target, &doctor);
+                // Admin can always manage doctors
+                if actor.role == Role::Admin {
+                    assert!(
+                        add_result.is_ok() && remove_result.is_ok(),
+                        "Admin should be able to manage doctors for any user"
+                    );
+                    continue;
+                }
 
-            // Admin can always manage doctors
-            if actor.role == Role::Admin {
+                // Users can manage their own doctors
+                if actor.id == target.id
+                    && (doctor.role == Role::Doctor || doctor.role == Role::Admin)
+                {
+                    assert!(
+                        add_result.is_ok() && remove_result.is_ok(),
+                        "User should be able to manage their own doctors"
+                    );
+                    continue;
+                }
+
+                // All other cases should be denied
                 assert!(
-                    add_result.is_ok() && remove_result.is_ok(),
-                    "Admin should be able to manage doctors for any user"
+                    add_result.is_err() && remove_result.is_err(),
+                    "Unexpected doctor management access granted: {:?} managing doctors for {:?} adding doctor with role {:?}",
+                    actor.role,
+                    target.role,
+                    doctor.role
                 );
-                continue;
             }
-
-            // Users can manage their own doctors
-            if actor.id == target.id {
-                assert!(
-                    add_result.is_ok() && remove_result.is_ok(),
-                    "User should be able to manage their own doctors"
-                );
-                continue;
-            }
-
-            // All other cases should be denied
-            assert!(
-                add_result.is_err() && remove_result.is_err(),
-                "Unexpected doctor management access granted: {:?} managing doctors for {:?}",
-                actor.role,
-                target.role
-            );
         }
     }
 

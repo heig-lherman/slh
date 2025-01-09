@@ -190,8 +190,14 @@ impl Service {
         self.enforce().ok().into_iter().flat_map(move |ctx| {
             self.db
                 .list_reports()
-                // TODO: is this how it's supposed to be filtered, shouldn't it be done in the casbin policy?
-                .filter(move |report| report.patient == user_id && ctx.read_report(report).is_ok())
+                .filter(move |report| report.patient == user_id)
+                .filter(move |report| {
+                    let Ok(patient) = self.db.get_user(report.patient) else {
+                        return false;
+                    };
+
+                    ctx.read_report(report, patient).is_ok()
+                })
         })
     }
 

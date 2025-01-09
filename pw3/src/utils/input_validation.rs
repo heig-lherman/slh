@@ -98,6 +98,7 @@ fn username_validation(username: &str) -> Result<(), InvalidInput> {
     // Use regex to validate username format
     // Must start and end with alphanumeric character
     // Can contain alphanumeric characters, underscore, hyphen, and dot in between
+    // Requires length to be at least 3 characters, intentional
     let username_regex = regex!(r"^[a-zA-Z0-9][a-zA-Z0-9._-]+[a-zA-Z0-9]$");
     if !username_regex.is_match(username) {
         return Err(InvalidInput);
@@ -170,4 +171,85 @@ fn validate_avs_number(avs_number: &str) -> bool {
 
     // Validate check digit using GTIN rules
     gtin_validate::gtin13::check(&avs_number.replace('.', ""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_password_validation() {
+        // Test valid passwords
+        assert!(password_validation("ahXeedea6i", "username"));
+        assert!(password_validation("Compl3x!Pass123", "different_user"));
+
+        // Test length constraints
+        assert!(!password_validation("short", "username"));
+        assert!(!password_validation("a".repeat(65).as_str(), "username"));
+
+        // Test username similarity
+        assert!(!password_validation("username", "username"));
+        assert!(!password_validation("USERNAME", "username"));
+
+        // Test common passwords
+        assert!(!password_validation("password123", "username"));
+        assert!(!password_validation("qwerty123", "username"));
+    }
+
+    #[test]
+    fn test_username_validation() {
+        // Test valid usernames
+        assert!(username_validation("john_doe").is_ok());
+        assert!(username_validation("user123").is_ok());
+        assert!(username_validation("a1-b2.c3").is_ok());
+
+        // Test length constraints
+        assert!(username_validation("a".repeat(33).as_str()).is_err());
+
+        // Test invalid characters
+        assert!(username_validation("user@name").is_err());
+        assert!(username_validation("user name").is_err());
+        assert!(username_validation("_username").is_err());
+        assert!(username_validation("username_").is_err());
+
+        // Test empty username
+        assert!(username_validation("").is_err());
+    }
+
+    #[test]
+    fn test_username_try_from() {
+        // Test valid conversions
+        assert!(Username::try_from("valid_user123").is_ok());
+        assert!(Username::try_from(String::from("valid-user123")).is_ok());
+
+        // Test invalid conversions
+        assert!(Username::try_from("invalid@user").is_err());
+        assert!(Username::try_from(String::from("")).is_err());
+    }
+
+    #[test]
+    fn test_avs_number_validation() {
+        // Test valid AVS numbers
+        assert!(validate_avs_number("756.0000.0000.02"));
+        assert!(validate_avs_number("7560000000002")); // Without dots
+
+        // Test invalid formats
+        assert!(!validate_avs_number("756.1234.5678")); // Too short
+        assert!(!validate_avs_number("abc.1234.5678.90")); // Invalid prefix
+        assert!(!validate_avs_number("756.abcd.5678.90")); // Non-numeric
+
+        // Test invalid check digit
+        assert!(!validate_avs_number("756.0000.0000.01"));
+        assert!(!validate_avs_number("7560000000009"));
+    }
+
+    #[test]
+    fn test_avs_number_display() {
+        let avs = AVSNumber::try_from("7560000000002").unwrap();
+        assert_eq!(avs.to_string(), "756.0000.0000.02");
+
+        // Test with already formatted input
+        let avs = AVSNumber::try_from("756.0000.0000.02").unwrap();
+        assert_eq!(avs.to_string(), "756.0000.0000.02");
+    }
 }
