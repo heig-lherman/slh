@@ -1,6 +1,7 @@
 use crate::regex;
 use derive_more::derive::Display;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use thiserror::Error;
 use zxcvbn::{zxcvbn, Score};
 
@@ -88,17 +89,16 @@ impl AsRef<str> for Username {
     }
 }
 
-// TODO do we need to validate username uniqueness here?
 fn username_validation(username: &str) -> Result<(), InvalidInput> {
     // Check if username is empty or too long
-    if username.is_empty() || username.len() > 32 {
+    if username.len() > 32 {
         return Err(InvalidInput);
     }
 
     // Use regex to validate username format
     // Must start and end with alphanumeric character
     // Can contain alphanumeric characters, underscore, hyphen, and dot in between
-    let username_regex = regex!(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$");
+    let username_regex = regex!(r"^[a-zA-Z0-9][a-zA-Z0-9._-]+[a-zA-Z0-9]$");
     if !username_regex.is_match(username) {
         return Err(InvalidInput);
     }
@@ -118,8 +118,25 @@ pub fn username_input_validation(message: &str) -> Result<Username, InvalidInput
 }
 
 /// Wrapper type for an AVS number that has been validated
-#[derive(Debug, Clone, Display, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 pub struct AVSNumber(String);
+
+impl Display for AVSNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.len() == 13 {
+            write!(
+                f,
+                "{}.{}.{}.{}",
+                &self.0[0..3],
+                &self.0[3..7],
+                &self.0[7..11],
+                &self.0[11..13]
+            )
+        } else {
+            write!(f, "{}", &self.0)
+        }
+    }
+}
 
 impl TryFrom<String> for AVSNumber {
     type Error = InvalidInput;

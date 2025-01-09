@@ -12,4 +12,4 @@ p,add-report,r.sub.role == "Doctor" && r.sub.id == r.obj.report.author && r.obj.
 p,read-report,r.sub.id == r.obj.author
 p,update-report,r.sub.id == r.obj.author
 
-p,read-report,r.sub.role == "Doctor" && r.obj.patient.TODO
+p,read-report,r.sub.role == "Doctor"

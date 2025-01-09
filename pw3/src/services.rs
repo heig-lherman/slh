@@ -119,7 +119,6 @@ impl Service {
         let target = self.db.get_user(user_id)?;
         self.enforce()?.update_role(target, new_role)?;
 
-        // TODO do we need to save instantly here?
         let user = self.db.get_user_mut(user_id)?;
         user.role = new_role;
         Ok(())
@@ -191,7 +190,8 @@ impl Service {
         self.enforce().ok().into_iter().flat_map(move |ctx| {
             self.db
                 .list_reports()
-                .filter(move |report| ctx.read_report(report).is_ok())
+                // TODO: is this how it's supposed to be filtered, shouldn't it be done in the casbin policy?
+                .filter(move |report| report.patient == user_id && ctx.read_report(report).is_ok())
         })
     }
 
